@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<title>HAR Pick</title>
+	<meta charset="UTF-8">
+	<link rel="icon" href="favicon.svg" type="image/svg+xml">
+	<link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+	<meta property="og:type" content="website">
+	<meta property="og:title" content="HAR Pick | 欲しいデータだけ、ひょいっと。">
+	<meta property="og:description" content="膨大なHARログから、動画・画像・APIレスポンスを即座に特定。高機能・高速なコンテンツ『抽出』専用ツール。">
+	<meta property="og:site_name" content="HAR Insight">
+	<meta property="og:image" content="https://alumina.me/harpick/contents/og-image.png">
+
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:title" content="HAR Pick">
+	<meta name="twitter:description" content="膨大なHARログから、動画・画像・APIレスポンスを即座に特定。高機能・高速なコンテンツ『抽出』専用ツール。">
+	<meta name="twitter:image" content="https://alumina.me/harpick/contents/og-image.png">
+
+	<link rel="stylesheet" href="./styles/style.css">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+	<section id="file-management">
+		<div id="drop-zone" class="drop-zone">HARファイルをドロップ または クリックして選択</div>
+		<input type="file" id="file-input" style="display:none" accept=".har" multiple>
+		<div id="source-list" class="source-list"></div>
+	</section>
+
+	<div class="preset-area">
+		<div class="preset-controls">
+			<span class="label">TYPE:</span>
+			<button class="btn-preset type-filter" data-type="mime" data-val="image/">画像</button>
+			<button class="btn-preset type-filter" data-type="mime" data-val="javascript">JS</button>
+			<button class="btn-preset type-filter" data-type="mime" data-val="application/json">JSON</button>
+			<button class="btn-preset type-filter" data-type="mime" data-val="text/html">HTML</button>
+			<button class="btn-preset type-filter" data-type="mime" data-val="text/css">CSS</button>
+			<button class="btn-preset type-filter" data-type="stream" data-val=".m3u8 .ts .mpd .m4s">ストリーム</button>
+			<span class="separator"></span>
+			<span class="label">STATUS:</span>
+			<button class="btn-preset status-filter" data-type="status" data-val="2">2xx</button>
+			<button class="btn-preset status-filter" data-type="status" data-val="3">3xx</button>
+			<button class="btn-preset status-filter" data-type="status" data-val="4">4xx</button>
+			<button class="btn-preset status-filter" data-type="status" data-val="5">5xx</button>
+			<span class="separator"></span>
+			<span class="label">SPEED:</span>
+			<button class="btn-preset speed-filter" data-type="speed" data-val="50">低速(50KB/s以下)</button>
+		</div>
+		<div class="preset-actions" style="margin-left: auto;">
+			<button id="btn-copy-url" class="btn-icon" title="現在の検索条件を共有URLとしてコピー">
+				<img src="./contents/link.svg"></img>
+				<div class="green-check"></div>
+			</button>
+		</div>
+	</div>
+
+	<section class="filter-panel">
+		<div class="filter-group"><label>URL/ファイル名</label><input type="text" id="f-url" placeholder=".png .jp*g"></div>
+		<div class="filter-group"><label>MIMEタイプ</label><input type="text" id="f-type" placeholder="application/json"></div>
+		<div class="filter-group">
+			<label>Status Code</label>
+			<div id="status-display" class="multi-select">選択なし</div>
+			<div id="status-dropdown" class="dropdown-content"></div>
+		</div>
+		<div class="filter-group">
+			<label>開始 <button id="btn-toggle-time" class="btn-small">時間・時刻切替</button></label>
+			<div class="input-toggle-group">
+				<input type="time" step="1" id="f-start-time">
+				<input type="number" id="f-start-sec" style="display:none;" placeholder="秒">
+				<button class="fixed-btn gte" style="cursor: default;">以上</button>
+			</div>
+		</div>
+		<div class="filter-group">
+			<label>終了</label>
+			<div class="input-toggle-group">
+				<input type="time" step="1" id="f-end-time">
+				<input type="number" id="f-end-sec" style="display:none;" placeholder="秒">
+				<button class="fixed-btn lte" style="cursor: default;">以下</button>
+			</div>
+		</div>
+		<div class="filter-group">
+			<label>サイズ (KB)</label>
+			<div class="input-toggle-group">
+				<input type="number" id="f-size-val"><button id="f-size-mode" class="toggle-btn gte">以上</button>
+			</div>
+		</div>
+		<div class="filter-group">
+			<label>速度 (KB/s)</label>
+			<div class="input-toggle-group">
+				<input type="number" id="f-speed-val"><button id="f-speed-mode" class="toggle-btn lte">以下</button>
+			</div>
+		</div>
+		<div class="filter-group reset-group">
+			<label>&nbsp;</label> <button id="btn-reset-filters" class="btn-reset">
+				<span class="icon">↺</span> フィルタをクリア
+			</button>
+		</div>
+	</section>
+
+	<section class="actions">
+		<div class="stats">
+			表示: <span id="count-filtered">0</span> / 
+			選択: <span id="count-selected">0</span>
+			
+			<span class="bulk-actions">
+			
+			<button id="btn-select-all-data" class="btn-text" title="フィルタに関わらず全て選択">すべて選択</button>
+			<button id="btn-deselect-all-data" class="btn-text" title="すフィルタに関わら全ての選択を解除">すべて解除</button>
+		</span>
+		</div>
+		<div class="download-controls">
+			<label>連番桁: <input type="number" id="zip-padding" value="3" min="1"></label>
+			<button id="download-btn" class="btn-primary" disabled>ダウンロード</button>
+		</div>
+	</section>
+
+	<main class="scroll-area">
+		<table>
+			<thead>
+				<tr>
+					<th style="width:20px;"><input type="checkbox" id="select-all"></th>
+					<th style="width:40px;">Status</th>
+					<th style="width:90px;">Start Time</th>
+					<th style="width:60px;">Elapsed</th>
+					<th>URL</th>
+					<th style="width:70px;">Size</th>
+					<th style="width:100px;">Source</th>
+				</tr>
+			</thead>
+			<tbody id="list-body"></tbody>
+		</table>
+	</main>
+
+	<script type="module" src="./src/app.js"></script>
+</body>
+</html>
