@@ -97,7 +97,7 @@ export class UIManager {
 			this.els.dropZone.classList.remove('hover');
 		});
 		
-		// クエリ付きりんくコピー
+		// クエリ付きリンクコピー
 		this.els.btnCopyUrl.onclick = () => {
 			const c = this.getCriteria();
 			const params = new URLSearchParams();
@@ -124,6 +124,9 @@ export class UIManager {
 			if(this.timeMode !== 'clock') {
 				params.set('timeMode', this.timeMode);
 			}
+			if(c.downloadStrategy) params.set('downloadStrategy', c.downloadStrategy);
+			if(c.downloadDirectory) params.set('downloadDirectory', c.downloadDirectory);
+			if(c.downloadPdding) params.set('downloadPdding', c.downloadPdding);
 
 			// URLの生成
 			const baseUrl = window.location.origin + window.location.pathname;
@@ -222,7 +225,10 @@ export class UIManager {
 			'startS': 'f-start-sec',
 			'endS': 'f-end-sec',
 			'size': 'f-size-val',
-			'speed': 'f-speed-val'
+			'speed': 'f-speed-val',
+			'downloadStrategy': 'chk-directory',
+			'downloadDirectory': 'select-strategy',
+			'downloadPdding': 'zip-padding'
 		};
 		
 
@@ -412,7 +418,10 @@ export class UIManager {
 			sizeVal: parseFloat(document.getElementById('f-size-val').value),
 			sizeMode: document.getElementById('f-size-mode').classList.contains('gte') ? 'gte' : 'lte',
 			speedVal: parseFloat(document.getElementById('f-speed-val').value),
-			speedMode: document.getElementById('f-speed-mode').classList.contains('gte') ? 'gte' : 'lte'
+			speedMode: document.getElementById('f-speed-mode').classList.contains('gte') ? 'gte' : 'lte',
+			downloadStrategy: document.getElementById('chk-directory').value,
+			downloadDirectory: document.getElementById('select-strategy').value,
+			downloadPdding: document.getElementById('zip-padding').value
 		};
 	}
 
@@ -543,8 +552,13 @@ export class UIManager {
 		if(selected.length === 0) {
 			return;
 		}
-		const padding = parseInt(document.getElementById('zip-padding')?.value) || 3;
-
-		this.downloader.download(selected, padding);
+		
+		const options = {
+			zipPadding: parseInt(document.getElementById('zip-padding')?.value) || 3,
+			useDirectory: document.getElementById('chk-directory').value !== 'FLAT',
+			duplicateStrategy: Downloader.DOWNLOAD_STRATEGY[document.getElementById('select-strategy').value]
+		};
+		
+		this.downloader.download(selected, options);
 	}
 }

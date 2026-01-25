@@ -26,6 +26,7 @@ export class HarAnalyzer {
 		}
 		this.allEntries.sort((a, b) => a._ts - b._ts);
 		this.firstEntryTime = this.allEntries.length > 0 ? this.allEntries[0]._ts : null;
+		console.info(this);
 	}
 
 	// Harファイルがリストから削除されたとき

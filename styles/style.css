@@ -84,16 +84,17 @@ body {
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-	gap: 10px;
+	gap: 6px;
 }
 
-.filter-group {
+.filter-group, .setting-item {
 	display: flex;
 	flex-direction: column;
 	position: relative;
 }
 
-.filter-group label {
+.filter-group label,
+.setting-item label {
 	font-size: 10px;
 	font-weight: bold;
 	color: #64748b;
@@ -102,7 +103,7 @@ body {
 
 input {
 	padding: 0 8px;
-	height: 30px;
+	height: 28px;
 	border: 1px solid #cbd5e1;
 	border-radius: 4px;
 	font-size: 12px;
@@ -110,9 +111,18 @@ input {
 	width: 100%;
 }
 
+select {
+	height: 28px;
+	padding: 0 8px;
+	border: 1px solid #cbd5e1;
+	border-radius: 4px;
+	font-size: 12px;
+}
+
+
 .input-toggle-group {
 	display: flex;
-	height: 30px;
+	height: 28px;
 }
 
 .input-toggle-group input {
@@ -167,7 +177,7 @@ input {
 .multi-select {
 	border: 1px solid #cbd5e1;
 	border-radius: 4px;
-	height: 30px;
+	height: 26px;
 	background: white;
 	cursor: pointer;
 	display: flex;
@@ -248,7 +258,6 @@ input {
 	width: 60px;
 	height: 28px;
 	text-align: center;
-	margin-left: 5px;
 }
 
 .scroll-area {
@@ -421,4 +430,17 @@ div.green-check {
 	border-left: 5px solid #25B000;
 	border-bottom: 5px solid #25B000;
 	transform: rotate(-45deg);
+}
+
+.download-controls {
+	display: flex;
+	gap: 5px;
+	align-items: center;
+}
+
+.settings-grid {
+	display: flex;
+	align-items: left;
+	gap: 5px;
+	flex: 1;
 }

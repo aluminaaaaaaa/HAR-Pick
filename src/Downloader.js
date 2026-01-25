@@ -60,6 +60,12 @@ export class Downloader {
 	'application/font-woff': 'woff',
 	'application/vnd.ms-fontobject': 'eot'
 	};
+	
+	static DOWNLOAD_STRATEGY = {
+		'ALL': 0,
+		'LATEST': 1,
+		'OLDEST': 2
+	};
 
 	// とくになし
 	constructor() {
@@ -67,96 +73,29 @@ export class Downloader {
 	}
 
 	// ファイルを生成し、ダウンロードする
-	async download(entries, zipPadding = 3) {
+	async download(entries, options) {
 		if(!entries || entries.length === 0) return;
 
-		if(entries.length === 1) {
-			this._downloadSingle(entries[0]);
+		const {
+			useDirectory = false,
+			duplicateStrategy = Downloader.DOWNLOAD_STRATEGY.ALL,
+			zipPadding = 3
+		} = options;
+
+		if (entries.length === 1) {
+			this._downloadSingle(entries[0], useDirectory);
 		}else {
-			await this._downloadZip(entries, zipPadding);
+			await this._downloadZip(entries, useDirectory, duplicateStrategy, zipPadding);
 		}
-	}
+    }
 
 	// 選択されたファイル数が1つのとき
 	_downloadSingle(entry) {
-		const {filename, blob}= this._prepareFileData(entry);
-		this._writeFile(blob, filename);
-	}
-
-	// 選択されたファイルが2つ以上のとき(ZIP圧縮する)
-	async _downloadZip(entries, pad) {
-		if(typeof JSZip === 'undefined') {
-			throw new Error('JSZip library is required for multiple downloads.');
-		}
-
-		const zip = new JSZip();
-		const nameCounts = new Map();
-		const currentIdx = new Map();
-
-		entries.forEach(e => {
-			const name = this._getRawFilename(e);
-			nameCounts.set(name,(nameCounts.get(name) || 0) + 1);
-		});
-
-		entries.forEach(e => {
-			const rawName = this._getRawFilename(e);
-			const mimeType = e.response.content.mimeType || '';
-			const baseName = this._addExtension(rawName, mimeType);
-			
-			let finalName = baseName;
-
-			if(nameCounts.get(rawName) > 1) {
-				const idx = currentIdx.get(rawName) || 0;
-				const dotIdx = baseName.lastIndexOf('.');
-				const namePart = dotIdx !== -1 ? baseName.substring(0, dotIdx) : baseName;
-				const extPart = dotIdx !== -1 ? baseName.substring(dotIdx) : "";
-				
-				finalName = `${namePart}_${idx.toString().padStart(pad, '0')}${extPart}`;
-				currentIdx.set(rawName, idx + 1);
-			}
-
-			const content = e.response.content.text || "";
-			const isBase64 = e.response.content.encoding === 'base64';
-			zip.file(finalName, content, {base64: isBase64});
-		});
-
-		const blob = await zip.generateAsync({type: "blob"});
-		const now = new Date();
-		const timeStamp = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0') + now.getSeconds().toString().padStart(2, '0');
-		const filename = `harpic_${timeStamp}`;
-		this._writeFile(blob, filename);
-	}
-	
-	// URLからファイル名を抽出する(パス, クエリの除去)
-	_getRawFilename(entry) {
-		const url = new URL(entry.request.url);
-		let filename = url.pathname.split('/').pop();
-		
-		const mimeType = entry.response.content.mimeType || '';
-		// ファイル名が空の場合補完する({mydomain}/top/のようなパスの場合)
-		if(!filename || filename.trim() === '') {
-			if(mimeType.includes('text/html')) {
-				filename = 'index.html';
-			}else {
-				filename = 'file';
-			}
-		}
-		return filename;
-	}
-
-	// ファイルを抽出して、ダウンロード用ファイル名を準備
-	_prepareFileData(entry) {
-		const mimeType = entry.response.content.mimeType || '';
-		let filename = this._getRawFilename(entry);
-		
-		// 拡張子がなければMIMEから推測して付与
-		filename = this._addExtension(filename, mimeType);
-
-		const content = entry.response.content.text || "";
-		const isBase64 = entry.response.content.encoding === 'base64';
-
+		const filename = this._getDestPath(entry, false);
 		let blob;
-		if(isBase64) {
+		const mimeType = entry.response.content.mimeType || '';
+		const content = entry.response.content.text || "";
+		if(entry.response.content.encoding === 'base64') {
 			const byteCharacters = atob(content);
 			const byteNumbers = new Uint8Array(byteCharacters.length);
 			for(let i = 0; i < byteCharacters.length; i++) {
@@ -166,16 +105,105 @@ export class Downloader {
 		}else {
 			blob = new Blob([content], {type: mimeType});
 		}
-		
-		return {filename, blob};
+		this._writeFile(blob, filename);
 	}
-	
-	// 拡張子を付与
-	_addExtension(filename, mimeType) {
-		if(/\.[a-z0-9]+$/i.test(filename)) return filename;
-		const baseMime = mimeType.split(';')[0].toLowerCase();
-		const ext = Downloader.MIME_MAP[baseMime];
-		return ext ? `${filename}.${ext}` : filename;
+
+	// 選択されたファイルが2つ以上のとき(ZIP圧縮する)
+	async _downloadZip(entries, useDirectory, strategy, pad) {
+		if (typeof JSZip === 'undefined') return;
+		const zip = new JSZip();
+		const nameCounts = new Map();
+		const currentIdx = new Map();
+
+		const filteredEntries = this._filterEntriesByStrategy(entries, useDirectory, strategy);
+
+		if (strategy === Downloader.DOWNLOAD_STRATEGY.ALL) {
+			filteredEntries.forEach(e => {
+				const fullPath = this._getDestPath(e, useDirectory);
+				nameCounts.set(fullPath, (nameCounts.get(fullPath) || 0) + 1);
+			});
+		}
+
+		filteredEntries.forEach(e => {
+			let fullPath = this._getDestPath(e, useDirectory);
+
+			if (strategy === Downloader.DOWNLOAD_STRATEGY.ALL && nameCounts.get(fullPath) > 1) {
+				fullPath = this._applyNumbering(fullPath, currentIdx, pad);
+			}
+
+			const content = e.response.content.text || "";
+			const isBase64 = e.response.content.encoding === 'base64';
+			zip.file(fullPath, content, { base64: isBase64 });
+		});
+
+		const blob = await zip.generateAsync({type: "blob"});
+		const now = new Date();
+		const timeStamp = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0') + now.getSeconds().toString().padStart(2, '0');
+		const filename = `harpic_${timeStamp}`;
+		this._writeFile(blob, filename);
+	}
+
+	// Latset, Oldestを選択した場合に重複を排除する
+	_filterEntriesByStrategy(entries, useDirectory, strategy) {
+		if (strategy === Downloader.DOWNLOAD_STRATEGY.ALL) return entries;
+
+		const map = new Map();
+		entries.forEach(entry => {
+			const path = this._getDestPath(entry, useDirectory);
+			const existing = map.get(path);
+
+			if (!existing) {
+				map.set(path, entry);
+				return;
+			}
+
+			const currentTime = new Date(entry.startedDateTime).getTime();
+			const existingTime = new Date(existing.startedDateTime).getTime();
+
+			if (strategy === Downloader.DOWNLOAD_STRATEGY.LATEST && currentTime > existingTime) {
+				map.set(path, entry);
+			} else if (strategy === Downloader.DOWNLOAD_STRATEGY.OLDEST && currentTime < existingTime) {
+				map.set(path, entry);
+			}
+		});
+
+		return Array.from(map.values());
+	}
+
+	_applyNumbering(fullPath, currentIdx, pad) {
+		const idx = currentIdx.get(fullPath) || 0;
+		currentIdx.set(fullPath, idx + 1);
+
+		const dotIdx = fullPath.lastIndexOf('.');
+		const ext = dotIdx !== -1 ? fullPath.substring(dotIdx) : "";
+		const base = dotIdx !== -1 ? fullPath.substring(0, dotIdx) : fullPath;
+		
+		return `${base}_${idx.toString().padStart(pad, '0')}${ext}`;
+	}
+
+	// フルパスを取得
+	_getDestPath(entry, useDirectory) {
+		const url = new URL(entry.request.url);
+		const mimeType = (entry.response.content.mimeType || '').split(';')[0].toLowerCase().trim();
+		
+		// パスの各要素を配列化
+		const pathSegments = (url.hostname + url.pathname).split('/');
+		let filename = pathSegments.pop() || '';
+
+		// ファイル名補完ロジック
+		if (!filename || filename.trim() === '') {
+			filename = mimeType.includes('text/html') ? 'index.html' : 'file';
+		}
+		if (!/\.[a-z0-9]+$/i.test(filename)) {
+			const ext = Downloader.MIME_MAP[mimeType];
+			if (ext) filename = `${filename}.${ext}`;
+		}
+
+		if (useDirectory) {
+			// ディレクトリ構造を維持する場合：[domain, ...path, filename]
+			return [...pathSegments, filename].join('/');
+		}
+		return filename;
 	}
 
 	// ファイルの書き出し
